@@ -130,7 +130,7 @@ local function setSniperState(state)
                         end
                     end)
                 end
-                task.wait()
+                task.wait(0.1)
             end
         end)
     end

@@ -1,0 +1,865 @@
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local VirtualUser = game:GetService("VirtualUser")
+local HttpService = game:GetService("HttpService")
+
+local CONFIG_PATH = "FlexUGCCodesSniperTimed_Config.json"
+
+local player = Players.LocalPlayer
+
+local old = CoreGui:FindFirstChild("FlexUGCCodesSniperTimed")
+if old then
+    old:Destroy()
+end
+
+local coreGui = cloneref(game:GetService("CoreGui"))
+local guiService = cloneref(game:GetService("GuiService"))
+local virtualInputManager = cloneref(game:GetService("VirtualInputManager"))
+getgenv().SniperActive = false
+ 
+local function FastClick(v)
+    local insetY = guiService:GetGuiInset().Y
+    local posX = v.AbsolutePosition.X + (v.AbsoluteSize.X * (0.5 - v.AnchorPoint.X))
+    local posY = v.AbsolutePosition.Y + (v.AbsoluteSize.Y * (0.5 - v.AnchorPoint.Y)) + insetY
+ 
+    virtualInputManager:SendMouseButtonEvent(posX, posY, 0, true, game, 1)
+    virtualInputManager:SendMouseButtonEvent(posX, posY, 0, false, game, 1)
+end
+ 
+local function setSniperState(state)
+    getgenv().SniperActive = state
+    if state then
+        pcall(function()
+            local mt = getrawmetatable(game)
+            setreadonly(mt, false)
+            local oldIndex, oldNamecall, oldToString = mt.__index, mt.__namecall, mt.__tostring
+ 
+            mt.__index = function(self, key)
+                if self == game and key == "VirtualInputManager" and not checkcaller() then return nil end
+                local value = oldIndex(self, key)
+                if type(value) == "function" then
+                    return function(obj, ...)
+                        local args = {...}
+                        if (key == "WaitForChild" or key == "FindFirstChild" or key == "FindFirstChildRecursive" or key == "FindFirstChildOfClass" or key == "FindFirstChildWhichIsA") and args[1] == "VirtualInputManager" and not checkcaller() then return nil end
+                        if key == "GetChildren" or key == "GetDescendants" then
+                            local tbl = value(obj, ...)
+                            local out = {}
+                            for i = 1, #tbl do
+                                local v = tbl[i]
+                                if not (typeof(v) == "Instance" and v.Name == "VirtualInputManager") or checkcaller() then out[#out + 1] = v end
+                            end
+                            return out
+                        end
+                        local result = value(obj, ...)
+                        if typeof(result) == "Instance" and result.Name == "VirtualInputManager" and not checkcaller() then return nil end
+                        return result
+                    end
+                end
+                if typeof(value) == "Instance" and value.Name == "VirtualInputManager" and not checkcaller() then return nil end
+                return value
+            end
+ 
+            mt.__namecall = function(self, ...)
+                local method = getnamecallmethod()
+                local args = {...}
+                if not checkcaller() then
+                    if self == game and method == "GetService" and args[1] == "VirtualInputManager" then return nil end
+                    if (method == "WaitForChild" or method == "FindFirstChild" or method == "FindFirstChildRecursive") and args[1] == "VirtualInputManager" then return nil end
+                end
+                local result = oldNamecall(self, ...)
+                if typeof(result) == "Instance" and result.Name == "VirtualInputManager" and not checkcaller() then return nil end
+                return result
+            end
+ 
+            mt.__tostring = function(self)
+                if typeof(self) == "Instance" and self.Name == "VirtualInputManager" and not checkcaller() then return "Instance" end
+                return oldToString(self)
+            end
+ 
+            hookfunction(rawget, function(t, k)
+                if t == game and k == "VirtualInputManager" and not checkcaller() then return nil end
+                return rawget(t, k)
+            end)
+ 
+            hookfunction(rawequal, function(a, b)
+                if not checkcaller() and ((typeof(a) == "Instance" and a.Name == "VirtualInputManager") or (typeof(b) == "Instance" and b.Name == "VirtualInputManager")) then return false end
+                return rawequal(a, b)
+            end)
+            setreadonly(mt, true)
+        end)
+ 
+        task.spawn(function()
+            while getgenv().SniperActive do
+                local overlay = coreGui:FindFirstChild("FoundationOverlay")
+                if overlay then
+                    pcall(function()
+                        local elements = overlay:GetDescendants()
+                        for i = 1, #elements do
+                            local v = elements[i]
+                            if v.Parent then
+                                if v.Parent.Name == "1" and string.find(v.Name, "Buy") then
+                                    local lastPos = v.AbsolutePosition
+                                    task.wait(0.005)
+                                    if v.AbsolutePosition == lastPos and getgenv().SniperActive then
+                                        FastClick(v)
+                                    end
+                                elseif v.Parent.Name == "Actions" and v.Name == "1" then
+                                    local isBuyBtn = false
+                                    local children = v.Parent:GetDescendants()
+                                    for j = 1, #children do
+                                        local child = children[j]
+                                        if child:IsA("TextLabel") and (string.find(child.Text, "Buy") or string.find(child.Text, "Price") or string.find(child.Text, "Robux")) then
+                                            isBuyBtn = true
+                                            break
+                                        end
+                                    end
+ 
+                                    if not isBuyBtn then
+                                        local lastPos = v.AbsolutePosition
+                                        task.wait()
+                                        if v.AbsolutePosition == lastPos and getgenv().SniperActive then
+                                            FastClick(v)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end)
+                end
+                task.wait()
+            end
+        end)
+    end
+end
+
+local entries = {}
+local scanning = false
+local destroyed = false
+local minimized = false
+local antiAfkEnabled = false
+local autoBuyPromptEnabled = false
+local connections = {}
+
+local BLUE = Color3.fromRGB(70, 140, 255)
+local PURPLE = Color3.fromRGB(160, 90, 255)
+local GREEN = Color3.fromRGB(90, 220, 130)
+local FULL_HEIGHT = 380
+local SCAN_INTERVAL = 4
+local BADGE_WORDS = {
+    NEW = true, HOT = true, SALE = true, FREE = true,
+    EVENT = true, UPDATE = true, LIMITED = true, PROMO = true,
+    BETA = true, ALPHA = true, DEMO = true, VIP = true,
+    EXCLUSIVE = true, SPECIAL = true, BONUS = true, GIFT = true,
+    TEST = true,
+}
+
+local function connect(signal, callback)
+    local c = signal:Connect(callback)
+    connections[#connections + 1] = c
+    return c
+end
+
+local function cleanup()
+    destroyed = true
+    for _, c in ipairs(connections) do
+        if c.Connected then
+            c:Disconnect()
+        end
+    end
+    table.clear(connections)
+end
+
+local function applyGradient(instance, rotation)
+    local grad = Instance.new("UIGradient")
+    grad.Color = ColorSequence.new(BLUE, PURPLE)
+    grad.Rotation = rotation or 0
+    grad.Parent = instance
+    return grad
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "FlexUGCCodesSniperTimed"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.Parent = CoreGui
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.fromOffset(320, FULL_HEIGHT)
+frame.Position = UDim2.new(0.5, -160, 0.14, 0)
+frame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+frame.BorderSizePixel = 0
+frame.ClipsDescendants = true
+frame.Parent = gui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 26)
+corner.Parent = frame
+
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(255, 255, 255)
+stroke.Thickness = 3
+stroke.Transparency = 0
+stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+stroke.Parent = frame
+applyGradient(stroke, 45)
+
+local topBar = Instance.new("Frame")
+topBar.Size = UDim2.new(1, 0, 0, 34)
+topBar.Position = UDim2.fromOffset(0, 0)
+topBar.BackgroundTransparency = 1
+topBar.Parent = frame
+
+local titleIcon = Instance.new("ImageLabel")
+titleIcon.Size = UDim2.fromOffset(20, 20)
+titleIcon.Position = UDim2.fromOffset(12, 7)
+titleIcon.BackgroundTransparency = 1
+titleIcon.Image = "rbxassetid://10709818626"
+titleIcon.Parent = topBar
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -140, 1, 0)
+title.Position = UDim2.fromOffset(40, 0)
+title.BackgroundTransparency = 1
+title.Text = "Flex UGC Codes Sniper Timed"
+title.TextColor3 = Color3.fromRGB(245, 245, 250)
+title.TextSize = 13
+title.Font = Enum.Font.GothamBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextTruncate = Enum.TextTruncate.AtEnd
+title.Parent = topBar
+
+local minimizeBtn = Instance.new("TextButton")
+minimizeBtn.Size = UDim2.fromOffset(25, 25)
+minimizeBtn.Position = UDim2.new(1, -60, 0.5, -12)
+minimizeBtn.BackgroundTransparency = 1
+minimizeBtn.Text = "−"
+minimizeBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+minimizeBtn.TextSize = 18
+minimizeBtn.Font = Enum.Font.GothamBold
+minimizeBtn.Parent = topBar
+
+local close = Instance.new("TextButton")
+close.Size = UDim2.fromOffset(25, 25)
+close.Position = UDim2.new(1, -29, 0.5, -12)
+close.BackgroundTransparency = 1
+close.Text = "×"
+close.TextColor3 = Color3.fromRGB(170, 170, 180)
+close.TextSize = 20
+close.Font = Enum.Font.GothamBold
+close.Parent = topBar
+
+local body = Instance.new("Frame")
+body.Size = UDim2.new(1, 0, 1, -34)
+body.Position = UDim2.fromOffset(0, 34)
+body.BackgroundTransparency = 1
+body.Parent = frame
+
+local sidebar = Instance.new("Frame")
+sidebar.Size = UDim2.new(0, 90, 1, 0)
+sidebar.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
+sidebar.BorderSizePixel = 0
+sidebar.Parent = body
+
+local sidebarPadding = Instance.new("UIPadding")
+sidebarPadding.PaddingTop = UDim.new(0, 10)
+sidebarPadding.PaddingLeft = UDim.new(0, 8)
+sidebarPadding.PaddingRight = UDim.new(0, 8)
+sidebarPadding.Parent = sidebar
+
+local sidebarLayout = Instance.new("UIListLayout")
+sidebarLayout.Padding = UDim.new(0, 8)
+sidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+sidebarLayout.Parent = sidebar
+
+local function createTabButton(text, iconId, order)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 40)
+    btn.BackgroundColor3 = Color3.fromRGB(24, 24, 30)
+    btn.BorderSizePixel = 0
+    btn.Text = ""
+    btn.AutoButtonColor = false
+    btn.LayoutOrder = order
+    btn.Parent = sidebar
+
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 8)
+    btnCorner.Parent = btn
+
+    local icon = Instance.new("ImageLabel")
+    icon.Size = UDim2.fromOffset(18, 18)
+    icon.Position = UDim2.fromOffset(8, 11)
+    icon.BackgroundTransparency = 1
+    icon.Image = "rbxassetid://" .. iconId
+    icon.Parent = btn
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -32, 1, 0)
+    label.Position = UDim2.fromOffset(30, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = Color3.fromRGB(150, 150, 160)
+    label.TextSize = 10
+    label.Font = Enum.Font.GothamBold
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = btn
+
+    return btn, label
+end
+
+local mainTabBtn, mainLabel = createTabButton("Main", "10723407389", 1)
+local controlTabBtn, controlLabel = createTabButton("Settings", "10734950309", 2)
+
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1, -90, 1, 0)
+content.Position = UDim2.fromOffset(90, 0)
+content.BackgroundTransparency = 1
+content.Parent = body
+
+local mainPage = Instance.new("Frame")
+mainPage.Size = UDim2.new(1, 0, 1, 0)
+mainPage.BackgroundTransparency = 1
+mainPage.Parent = content
+
+local status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, -20, 0, 16)
+status.Position = UDim2.fromOffset(10, 6)
+status.BackgroundTransparency = 1
+status.Text = "Ready"
+status.TextColor3 = Color3.fromRGB(140, 140, 150)
+status.TextSize = 9
+status.Font = Enum.Font.Gotham
+status.TextXAlignment = Enum.TextXAlignment.Left
+status.Parent = mainPage
+
+local listFrame = Instance.new("ScrollingFrame")
+listFrame.Size = UDim2.new(1, -20, 1, -32)
+listFrame.Position = UDim2.fromOffset(10, 26)
+listFrame.BackgroundTransparency = 1
+listFrame.BorderSizePixel = 0
+listFrame.ScrollBarThickness = 3
+listFrame.ScrollBarImageColor3 = PURPLE
+listFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+listFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+listFrame.Parent = mainPage
+
+local layout = Instance.new("UIListLayout")
+layout.Padding = UDim.new(0, 6)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Parent = listFrame
+
+local controlPage = Instance.new("Frame")
+controlPage.Size = UDim2.new(1, 0, 1, 0)
+controlPage.BackgroundTransparency = 1
+controlPage.Visible = false
+controlPage.Parent = content
+
+local controlLayout = Instance.new("UIListLayout")
+controlLayout.Padding = UDim.new(0, 8)
+controlLayout.SortOrder = Enum.SortOrder.LayoutOrder
+controlLayout.Parent = controlPage
+
+local controlPadding = Instance.new("UIPadding")
+controlPadding.PaddingTop = UDim.new(0, 10)
+controlPadding.PaddingLeft = UDim.new(0, 10)
+controlPadding.PaddingRight = UDim.new(0, 10)
+controlPadding.Parent = controlPage
+
+local function createToggleRow(label, order, callback)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 30)
+    row.BackgroundColor3 = Color3.fromRGB(26, 26, 32)
+    row.BorderSizePixel = 0
+    row.LayoutOrder = order
+    row.Parent = controlPage
+
+    local rowCorner = Instance.new("UICorner")
+    rowCorner.CornerRadius = UDim.new(0, 7)
+    rowCorner.Parent = row
+
+    local rowLabel = Instance.new("TextLabel")
+    rowLabel.Size = UDim2.new(1, -60, 1, 0)
+    rowLabel.Position = UDim2.fromOffset(10, 0)
+    rowLabel.BackgroundTransparency = 1
+    rowLabel.Text = label
+    rowLabel.TextColor3 = Color3.fromRGB(225, 225, 230)
+    rowLabel.TextSize = 10
+    rowLabel.Font = Enum.Font.GothamBold
+    rowLabel.TextXAlignment = Enum.TextXAlignment.Left
+    rowLabel.Parent = row
+
+    local track = Instance.new("Frame")
+    track.Size = UDim2.fromOffset(38, 18)
+    track.Position = UDim2.new(1, -48, 0.5, -9)
+    track.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
+    track.BorderSizePixel = 0
+    track.Parent = row
+
+    local trackCorner = Instance.new("UICorner")
+    trackCorner.CornerRadius = UDim.new(1, 0)
+    trackCorner.Parent = track
+
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.fromOffset(14, 14)
+    knob.Position = UDim2.fromOffset(2, 2)
+    knob.BackgroundColor3 = Color3.fromRGB(230, 230, 235)
+    knob.BorderSizePixel = 0
+    knob.Parent = track
+
+    local knobCorner = Instance.new("UICorner")
+    knobCorner.CornerRadius = UDim.new(1, 0)
+    knobCorner.Parent = knob
+
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Size = UDim2.new(1, 0, 1, 0)
+    toggleBtn.BackgroundTransparency = 1
+    toggleBtn.Text = ""
+    toggleBtn.Parent = track
+
+    local state = false
+
+    connect(toggleBtn.Activated, function()
+        state = not state
+
+        local knobTween = TweenService:Create(
+            knob,
+            TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            { Position = state and UDim2.fromOffset(22, 2) or UDim2.fromOffset(2, 2) }
+        )
+        knobTween:Play()
+
+        track.BackgroundColor3 = state and GREEN or Color3.fromRGB(45, 45, 52)
+
+        callback(state)
+    end)
+
+    return row
+end
+
+local function onAntiAfkToggle(state)
+    antiAfkEnabled = state
+end
+
+local function onAutoBuyPrompt(state)
+    autoBuyPromptEnabled = state
+    setSniperState(state)
+end
+
+createToggleRow("Anti Afk", 1, onAntiAfkToggle)
+createToggleRow("Auto Buy Prompt", 2, onAutoBuyPrompt)
+
+connect(player.Idled, function()
+    if antiAfkEnabled then
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.new())
+    end
+end)
+
+local function setActiveTab(tab)
+    mainPage.Visible = tab == "main"
+    controlPage.Visible = tab == "control"
+    mainTabBtn.BackgroundColor3 = tab == "main" and Color3.fromRGB(34, 30, 44) or Color3.fromRGB(24, 24, 30)
+    controlTabBtn.BackgroundColor3 = tab == "control" and Color3.fromRGB(34, 30, 44) or Color3.fromRGB(24, 24, 30)
+    mainLabel.TextColor3 = tab == "main" and Color3.fromRGB(240, 240, 245) or Color3.fromRGB(150, 150, 160)
+    controlLabel.TextColor3 = tab == "control" and Color3.fromRGB(240, 240, 245) or Color3.fromRGB(150, 150, 160)
+end
+
+connect(mainTabBtn.Activated, function()
+    setActiveTab("main")
+end)
+
+connect(controlTabBtn.Activated, function()
+    setActiveTab("control")
+end)
+
+setActiveTab("main")
+
+connect(minimizeBtn.Activated, function()
+    minimized = not minimized
+
+    local targetHeight = minimized and 34 or FULL_HEIGHT
+    local tween = TweenService:Create(
+        frame,
+        TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { Size = UDim2.fromOffset(320, targetHeight) }
+    )
+
+    minimizeBtn.Text = minimized and "+" or "−"
+    body.Visible = not minimized
+    tween:Play()
+end)
+
+local function setStatus(text, color)
+    status.Text = text
+    if color then
+        status.TextColor3 = color
+    end
+end
+
+local function formatTime(seconds)
+    local total = math.max(0, math.ceil(seconds))
+
+    local days = math.floor(total / 86400)
+    total %= 86400
+
+    local hours = math.floor(total / 3600)
+    total %= 3600
+
+    local minutes = math.floor(total / 60)
+    local secs = total % 60
+
+    if days > 0 then
+        return string.format("%02dd %02dh %02dm %02ds", days, hours, minutes, secs)
+    elseif hours > 0 then
+        return string.format("%02dh %02dm %02ds", hours, minutes, secs)
+    else
+        return string.format("%02dm %02ds", minutes, secs)
+    end
+end
+
+local function findMarkers()
+    local playerGui = player:FindFirstChildOfClass("PlayerGui")
+    local markers = {}
+
+    if not playerGui then
+        return markers
+    end
+
+    for _, obj in ipairs(playerGui:GetDescendants()) do
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+            local text = tostring(obj.Text or "")
+
+            if string.find(string.lower(text), "redeemed after", 1, true) then
+                markers[#markers + 1] = obj
+            end
+        end
+    end
+
+    return markers
+end
+
+local function findEntryData(marker)
+    local current = marker
+
+    for _ = 1, 8 do
+        current = current.Parent
+        if not current then
+            break
+        end
+
+        local ts, fallbackName, codeMatch
+
+        for _, child in ipairs(current:GetDescendants()) do
+            if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
+                local text = tostring(child.Text or "")
+
+                if not ts then
+                    local value = string.match(text, "^%s*(%d%d%d%d%d%d%d%d%d%d)%s*$")
+
+                    if value then
+                        local number = tonumber(value)
+
+                        if number and number >= 1500000000 and number <= 2500000000 then
+                            ts = number
+                        end
+                    end
+                end
+
+                if not codeMatch then
+                    local afterCode = text:match("[Cc]ode[:;]%s*([%w_%-]+)")
+
+                    if afterCode and afterCode ~= "" and #afterCode <= 24 then
+                        codeMatch = afterCode
+                    end
+                end
+
+                if not fallbackName and child ~= marker then
+                    local trimmed = text:match("^%s*(.-)%s*$")
+
+                    if trimmed ~= ""
+                        and #trimmed >= 4
+                        and #trimmed <= 24
+                        and string.match(trimmed, "^[%u%d][%u%d_%-]*$")
+                        and not BADGE_WORDS[trimmed]
+                        and (not ts or trimmed ~= tostring(ts)) then
+                        fallbackName = trimmed
+                    end
+                end
+            end
+        end
+
+        if ts then
+            return ts, codeMatch or fallbackName
+        end
+    end
+end
+
+local function saveConfig()
+    if typeof(writefile) ~= "function" then
+        return
+    end
+
+    local data = {}
+
+    for _, entry in ipairs(entries) do
+        data[#data + 1] = {
+            code = entry.code,
+            timestamp = entry.timestamp,
+            fired = entry.fired,
+        }
+    end
+
+    pcall(function()
+        writefile(CONFIG_PATH, HttpService:JSONEncode(data))
+    end)
+end
+
+local function createRow(entry)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, 0, 0, 32)
+    row.BackgroundColor3 = Color3.fromRGB(26, 26, 32)
+    row.BorderSizePixel = 0
+    row.Parent = listFrame
+
+    local rowCorner = Instance.new("UICorner")
+    rowCorner.CornerRadius = UDim.new(0, 7)
+    rowCorner.Parent = row
+
+    local rowAccent = Instance.new("Frame")
+    rowAccent.Size = UDim2.new(0, 2, 1, -8)
+    rowAccent.Position = UDim2.fromOffset(0, 4)
+    rowAccent.BackgroundColor3 = PURPLE
+    rowAccent.BorderSizePixel = 0
+    rowAccent.Parent = row
+
+    local codeLabel = Instance.new("TextLabel")
+    codeLabel.Size = UDim2.new(0.55, -10, 1, 0)
+    codeLabel.Position = UDim2.fromOffset(12, 0)
+    codeLabel.BackgroundTransparency = 1
+    codeLabel.Text = entry.code
+    codeLabel.TextColor3 = Color3.fromRGB(235, 235, 240)
+    codeLabel.TextSize = 11
+    codeLabel.Font = Enum.Font.GothamBold
+    codeLabel.TextXAlignment = Enum.TextXAlignment.Left
+    codeLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    codeLabel.Parent = row
+
+    local timerLabel = Instance.new("TextLabel")
+    timerLabel.Size = UDim2.new(0.45, -10, 1, 0)
+    timerLabel.Position = UDim2.new(0.55, 0, 0, 0)
+    timerLabel.BackgroundTransparency = 1
+    timerLabel.Text = "--"
+    timerLabel.TextColor3 = Color3.fromRGB(255, 205, 90)
+    timerLabel.TextSize = 11
+    timerLabel.Font = Enum.Font.GothamBold
+    timerLabel.TextXAlignment = Enum.TextXAlignment.Right
+    timerLabel.Parent = row
+
+    entry.row = row
+    entry.status = timerLabel
+end
+
+local function loadConfig()
+    if typeof(isfile) ~= "function" or typeof(readfile) ~= "function" then
+        return
+    end
+
+    local ok, exists = pcall(isfile, CONFIG_PATH)
+    if not ok or not exists then
+        return
+    end
+
+    local decodeOk, decoded = pcall(function()
+        return HttpService:JSONDecode(readfile(CONFIG_PATH))
+    end)
+
+    if not decodeOk or typeof(decoded) ~= "table" then
+        return
+    end
+
+    for _, item in ipairs(decoded) do
+        if item.code and item.timestamp then
+            local entry = {
+                code = item.code,
+                timestamp = item.timestamp,
+                fired = item.fired == true,
+            }
+
+            createRow(entry)
+            entries[#entries + 1] = entry
+
+            if entry.fired then
+                entry.status.Text = "Redeemed"
+                entry.status.TextColor3 = GREEN
+            end
+        end
+    end
+end
+
+local function redeemEntry(entry)
+    if entry.fired or destroyed then
+        return
+    end
+
+    local remote = ReplicatedStorage:FindFirstChild("RedeemCode")
+
+    if not remote or not remote:IsA("RemoteFunction") then
+        entry.status.Text = "No Remote"
+        entry.status.TextColor3 = Color3.fromRGB(255, 100, 100)
+        return
+    end
+
+    entry.fired = true
+    entry.status.Text = "Redeeming"
+    entry.status.TextColor3 = Color3.fromRGB(100, 210, 255)
+
+    local ok = pcall(function()
+        remote:InvokeServer(entry.code)
+    end)
+
+    if ok then
+        entry.status.Text = "Redeemed"
+        entry.status.TextColor3 = GREEN
+    else
+        entry.fired = false
+        entry.status.Text = "Failed"
+        entry.status.TextColor3 = Color3.fromRGB(255, 100, 100)
+    end
+
+    saveConfig()
+end
+
+local function scanTime()
+    if scanning or destroyed then
+        return
+    end
+
+    scanning = true
+
+    local markers = findMarkers()
+    local added = 0
+    local index = #entries
+
+    local seen = {}
+    for _, entry in ipairs(entries) do
+        seen[entry.timestamp] = true
+    end
+
+    for _, marker in ipairs(markers) do
+        local ts, name = findEntryData(marker)
+
+        if ts and not seen[ts] then
+            seen[ts] = true
+            index += 1
+            added += 1
+
+            local entry = {
+                code = name or ("Code " .. index),
+                timestamp = ts,
+                fired = false,
+            }
+
+            createRow(entry)
+            entries[#entries + 1] = entry
+        end
+    end
+
+    if #entries == 0 then
+        setStatus("No codes found", Color3.fromRGB(255, 110, 110))
+    elseif added > 0 then
+        setStatus(#entries .. " code(s) total", GREEN)
+    end
+
+    if added > 0 then
+        saveConfig()
+    end
+
+    scanning = false
+end
+
+loadConfig()
+
+task.spawn(function()
+    while not destroyed do
+        scanTime()
+        task.wait(SCAN_INTERVAL)
+    end
+end)
+
+connect(RunService.Heartbeat, function()
+    if destroyed then
+        return
+    end
+
+    for _, entry in ipairs(entries) do
+        if not entry.fired then
+            local remaining = entry.timestamp - workspace:GetServerTimeNow()
+
+            if remaining <= 0 then
+                redeemEntry(entry)
+            else
+                entry.status.Text = formatTime(remaining)
+
+                if remaining <= 3 then
+                    entry.status.TextColor3 = Color3.fromRGB(255, 100, 100)
+                elseif remaining <= 10 then
+                    entry.status.TextColor3 = Color3.fromRGB(255, 180, 80)
+                else
+                    entry.status.TextColor3 = Color3.fromRGB(255, 205, 90)
+                end
+            end
+        end
+    end
+end)
+
+local dragging = false
+local dragStart
+local startPosition
+
+connect(topBar.InputBegan, function(input)
+    if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+        dragging = true
+        dragStart = input.Position
+        startPosition = frame.Position
+
+        local c
+        c = input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+                if c then
+                    c:Disconnect()
+                end
+            end
+        end)
+    end
+end)
+
+connect(UserInputService.InputChanged, function(input)
+    if not dragging then
+        return
+    end
+
+    if input.UserInputType ~= Enum.UserInputType.Touch
+        and input.UserInputType ~= Enum.UserInputType.MouseMovement then
+        return
+    end
+
+    local delta = input.Position - dragStart
+
+    frame.Position = UDim2.new(
+        startPosition.X.Scale,
+        startPosition.X.Offset + delta.X,
+        startPosition.Y.Scale,
+        startPosition.Y.Offset + delta.Y
+    )
+end)
+
+connect(close.Activated, function()
+    cleanup()
+    gui:Destroy()
+end)

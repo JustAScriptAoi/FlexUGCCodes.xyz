@@ -87,54 +87,73 @@ local function setSniperState(state)
  
             hookfunction(rawequal, function(a, b)
                 if not checkcaller() and ((typeof(a) == "Instance" and a.Name == "VirtualInputManager") or (typeof(b) == "Instance" and b.Name == "VirtualInputManager")) then return false end
-                return rawequal(a, b)
-            end)
-            setreadonly(mt, true)
-        end)
- 
-        task.spawn(function()
-            while getgenv().SniperActive do
-                local overlay = coreGui:FindFirstChild("FoundationOverlay")
-                if overlay then
-                    pcall(function()
-                        local elements = overlay:GetDescendants()
-                        for i = 1, #elements do
-                            local v = elements[i]
-                            if v.Parent then
-                                if v.Parent.Name == "1" and string.find(v.Name, "Buy") then
-                                    local lastPos = v.AbsolutePosition
-                                    task.wait(0.1)
-                                    if v.AbsolutePosition == lastPos and getgenv().SniperActive then
-                                        FastClick(v)
-                                    end
-                                elseif v.Parent.Name == "Actions" and v.Name == "1" then
-                                    local isBuyBtn = false
-                                    local children = v.Parent:GetDescendants()
-                                    for j = 1, #children do
-                                        local child = children[j]
-                                        if child:IsA("TextLabel") and (string.find(child.Text, "Buy") or string.find(child.Text, "Price") or string.find(child.Text, "Robux")) then
-                                            isBuyBtn = true
-                                            break
-                                        end
-                                    end
- 
-                                    if not isBuyBtn then
-                                        local lastPos = v.AbsolutePosition
-                                        task.wait()
-                                        if v.AbsolutePosition == lastPos and getgenv().SniperActive then
-                                            FastClick(v)
-                                        end
-                                    end
+local virtualInputManager = cloneref(game:GetService("VirtualInputManager"))
+local guiService = cloneref(game:GetService("GuiService"))
+local coreGui = cloneref(game:GetService("CoreGui"))
+local marketPlaceService = cloneref(game:GetService("MarketplaceService"))
+
+getgenv().SniperActive = true
+
+local function CheckMarketplaceSafety(assetId)
+    local success, info = pcall(function()
+        return marketPlaceService:GetProductInfo(assetId)
+    end)
+    if success and info then
+        return info.IsForSale
+    end
+    return true
+end
+
+local function FastClick(v)
+    local insetY = guiService:GetGuiInset().Y
+    local posX = v.AbsolutePosition.X + (v.AbsoluteSize.X * (0.5 - v.AnchorPoint.X))
+    local posY = v.AbsolutePosition.Y + (v.AbsoluteSize.Y * (0.5 - v.AnchorPoint.Y)) + insetY
+    
+    virtualInputManager:SendMouseButtonEvent(posX, posY, 0, true, game, 1)
+    virtualInputManager:SendMouseButtonEvent(posX, posY, 0, false, game, 1)
+end
+
+task.spawn(function()
+    while getgenv().SniperActive do
+        local overlay = coreGui:FindFirstChild("FoundationOverlay")
+        if overlay then
+            pcall(function()
+                local elements = overlay:GetDescendants()
+                for i = 1, #elements do
+                    local v = elements[i]
+                    if v.Parent then
+                        if v.Parent.Name == "1" and string.find(v.Name, "Buy") then
+                            local lastPos = v.AbsolutePosition
+                            task.wait(0.005)
+                            if v.AbsolutePosition == lastPos and getgenv().SniperActive then
+                                FastClick(v)
+                            end
+                        elseif v.Parent.Name == "Actions" and v.Name == "1" then
+                            local isBuyBtn = false
+                            local children = v.Parent:GetDescendants()
+                            for j = 1, #children do
+                                local child = children[j]
+                                if child:IsA("TextLabel") and (string.find(child.Text, "Buy") or string.find(child.Text, "Price") or string.find(child.Text, "Robux")) then
+                                    isBuyBtn = true
+                                    break
+                                end
+                            end
+                            
+                            if not isBuyBtn then
+                                local lastPos = v.AbsolutePosition
+                                task.wait()
+                                if v.AbsolutePosition == lastPos and getgenv().SniperActive then
+                                    FastClick(v)
                                 end
                             end
                         end
-                    end)
+                    end
                 end
-                task.wait()
-            end
-        end)
+            end)
+        end
+        task.wait()
     end
-end
+end)
 
 local entries = {}
 local scanning = false

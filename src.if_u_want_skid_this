@@ -103,7 +103,7 @@ local function setSniperState(state)
                             if v.Parent then
                                 if v.Parent.Name == "1" and string.find(v.Name, "Buy") then
                                     local lastPos = v.AbsolutePosition
-                                    task.wait(0.005)
+                                    task.wait(0.1)
                                     if v.AbsolutePosition == lastPos and getgenv().SniperActive then
                                         FastClick(v)
                                     end

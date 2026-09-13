@@ -130,25 +130,25 @@ local function setSniperState(state)
                         end
                     end)
                 end
-                task.wait(0.1)
+                task.wait()
             end
         end)
     end
 end
 
 local entries = {}
-local scanning = false
+local scanning = true
 local destroyed = false
 local minimized = false
-local antiAfkEnabled = false
-local autoBuyPromptEnabled = false
+local antiAfkEnabled = true
+local autoBuyPromptEnabled = true
 local connections = {}
 
 local BLUE = Color3.fromRGB(70, 140, 255)
 local PURPLE = Color3.fromRGB(160, 90, 255)
 local GREEN = Color3.fromRGB(90, 220, 130)
 local FULL_HEIGHT = 380
-local SCAN_INTERVAL = 4
+local SCAN_INTERVAL = 1
 local BADGE_WORDS = {
     NEW = true, HOT = true, SALE = true, FREE = true,
     EVENT = true, UPDATE = true, LIMITED = true, PROMO = true,

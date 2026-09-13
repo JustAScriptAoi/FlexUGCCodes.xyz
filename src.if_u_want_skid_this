@@ -137,11 +137,11 @@ local function setSniperState(state)
 end
 
 local entries = {}
-local scanning = true
+local scanning = false
 local destroyed = false
 local minimized = false
-local antiAfkEnabled = true
-local autoBuyPromptEnabled = true
+local antiAfkEnabled = false
+local autoBuyPromptEnabled = false
 local connections = {}
 
 local BLUE = Color3.fromRGB(70, 140, 255)
